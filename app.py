@@ -44,13 +44,52 @@ def parse_iso(value):
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+class DB:
+    def __init__(self):
+        self.pg = bool(os.environ.get("DATABASE_URL"))
+        if self.pg:
+            import psycopg
+            from psycopg.rows import dict_row
+            url = os.environ["DATABASE_URL"].replace("postgres://", "postgresql://", 1)
+            self.conn = psycopg.connect(url, row_factory=dict_row)
+            self.cur = self.conn.cursor()
+        else:
+            self.conn = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA foreign_keys=ON")
+            self.conn.execute("PRAGMA busy_timeout=8000")
+            self.cur = None
+
+    def execute(self, sql, params=()):
+        statement = sql.strip()
+        if self.pg:
+            statement = statement.replace("?", "%s")
+            if statement.upper().startswith("BEGIN"):
+                statement = "BEGIN"
+            if statement.upper().startswith("PRAGMA"):
+                return self
+            self.cur.execute(statement, params)
+        else:
+            self.cur = self.conn.execute(statement, params)
+        return self
+
+    def fetchone(self):
+        return self.cur.fetchone()
+
+    def fetchall(self):
+        return self.cur.fetchall()
+
+    @property
+    def rowcount(self):
+        return self.cur.rowcount
+
+    def close(self):
+        self.conn.close()
+
+
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=8000")
-    return conn
+    return DB()
 
 
 def hash_password(password, salt=None):
@@ -86,7 +125,9 @@ def unsign(token):
 
 def init():
     conn = db()
-    conn.execute("""
+    blob = "BYTEA" if conn.pg else "BLOB"
+    reservation_id = "id SERIAL PRIMARY KEY" if conn.pg else "id INTEGER PRIMARY KEY AUTOINCREMENT"
+    conn.execute(f"""
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             title TEXT NOT NULL,
@@ -101,6 +142,8 @@ def init():
             payment_instructions TEXT NOT NULL,
             reserve_minutes INTEGER NOT NULL,
             photo TEXT,
+            photo_data {blob},
+            photo_type TEXT,
             sales_open INTEGER NOT NULL DEFAULT 1,
             winner_number INTEGER,
             winner_name TEXT,
@@ -115,9 +158,9 @@ def init():
             password_hash TEXT NOT NULL
         )
     """)
-    conn.execute("""
+    conn.execute(f"""
         CREATE TABLE IF NOT EXISTS reservations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            {reservation_id},
             ref TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
@@ -128,6 +171,8 @@ def init():
             paid_at TEXT,
             receipt TEXT,
             receipt_name TEXT,
+            receipt_data {blob},
+            receipt_type TEXT,
             consent_public INTEGER NOT NULL DEFAULT 0
         )
     """)
@@ -166,6 +211,8 @@ def init():
         password = os.environ.get("RIFA_ADMIN_PASSWORD") or secrets.token_urlsafe(9)
         conn.execute("INSERT INTO admin (id, password_hash) VALUES (1, ?)", (hash_password(password),))
         (DATA / "ORGANIZER_PASSWORD.txt").write_text(password + "\n", encoding="utf-8")
+    if conn.pg:
+        conn.execute("COMMIT")
     conn.close()
 
 
@@ -202,7 +249,7 @@ def public_raffle(conn):
         "organizer_phone": s["organizer_phone"],
         "payment_instructions": s["payment_instructions"],
         "reserve_minutes": s["reserve_minutes"],
-        "photo_url": "/api/photo" if s["photo"] else None,
+        "photo_url": "/api/photo" if s["photo_data"] or s["photo"] else None,
         "sales_open": bool(s["sales_open"]) and not s["winner_number"],
         "drawn": bool(s["winner_number"]),
         "winner": winner,
@@ -267,14 +314,11 @@ def get_numbers():
 @app.get("/api/photo")
 def photo():
     conn = db()
-    row = conn.execute("SELECT photo FROM settings WHERE id = 1").fetchone()
+    row = conn.execute("SELECT photo_data, photo_type, photo FROM settings WHERE id = 1").fetchone()
     conn.close()
-    if not row or not row["photo"]:
+    if not row or not row["photo_data"]:
         raise HTTPException(404, "Sem foto")
-    path = PHOTOS / row["photo"]
-    if not path.exists():
-        raise HTTPException(404, "Sem foto")
-    return FileResponse(path)
+    return Response(bytes(row["photo_data"]), media_type=row["photo_type"] or "image/jpeg")
 
 
 @app.post("/api/reservations")
@@ -316,10 +360,10 @@ async def create_reservation(request: Request):
         total = s["price_cents"] * len(numbers)
         cur = conn.execute(
             """INSERT INTO reservations (ref, name, phone, total_cents, status, created_at, expires_at, consent_public)
-               VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, 'pending', ?, ?, ?) RETURNING id""",
             (ref, name, phone, total, iso(created), iso(expires), consent),
         )
-        rid = cur.lastrowid
+        rid = cur.fetchone()["id"]
         for n in numbers:
             changed = conn.execute(
                 "UPDATE tickets SET status = 'reserved', reservation_id = ? WHERE number = ? AND status = 'available'",
@@ -391,9 +435,11 @@ async def upload_receipt(ref: str, phone: str = Form(...), file: UploadFile = Fi
         if row["status"] != "pending":
             conn.execute("ROLLBACK")
             raise HTTPException(400, "Esta reserva não está aguardando pagamento.")
-        name = f"{ref}-{secrets.token_hex(4)}.{ext}"
-        (RECEIPTS / name).write_bytes(content)
-        conn.execute("UPDATE reservations SET receipt = ?, receipt_name = ? WHERE id = ?", (name, file.filename or name, row["id"]))
+        name = f"{ref}.{ext}"
+        conn.execute(
+            "UPDATE reservations SET receipt = ?, receipt_name = ?, receipt_data = ?, receipt_type = ? WHERE id = ?",
+            (name, file.filename or name, content, kind, row["id"]),
+        )
         conn.execute("COMMIT")
     finally:
         conn.close()
@@ -530,11 +576,10 @@ async def upload_photo(request: Request, file: UploadFile = File(...)):
     if kind not in {"image/jpeg", "image/png", "image/webp"} or len(content) > MAX_UPLOAD:
         raise HTTPException(400, "Envie uma foto JPG, PNG ou WEBP de até 5 MB.")
     ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[kind]
-    name = f"prize-{secrets.token_hex(4)}.{ext}"
-    (PHOTOS / name).write_bytes(content)
+    name = f"prize.{ext}"
     conn = db()
-    conn.execute("UPDATE settings SET photo = ? WHERE id = 1", (name,))
-    conn.commit()
+    conn.execute("UPDATE settings SET photo = ?, photo_data = ?, photo_type = ? WHERE id = 1", (name, content, kind))
+    conn.execute("COMMIT")
     conn.close()
     return {"photo_url": "/api/photo"}
 
@@ -582,14 +627,11 @@ def cancel(ref: str, request: Request):
 def receipt(ref: str, request: Request):
     admin_user(request)
     conn = db()
-    row = conn.execute("SELECT receipt FROM reservations WHERE ref = ?", (ref,)).fetchone()
+    row = conn.execute("SELECT receipt_data, receipt_type FROM reservations WHERE ref = ?", (ref,)).fetchone()
     conn.close()
-    if not row or not row["receipt"]:
+    if not row or not row["receipt_data"]:
         raise HTTPException(404, "Sem comprovante.")
-    path = RECEIPTS / row["receipt"]
-    if not path.exists():
-        raise HTTPException(404, "Sem comprovante.")
-    return FileResponse(path)
+    return Response(bytes(row["receipt_data"]), media_type=row["receipt_type"] or "application/octet-stream")
 
 
 @app.post("/api/admin/password")
@@ -601,7 +643,7 @@ async def change_password(request: Request):
         raise HTTPException(400, "Use uma senha com pelo menos 8 caracteres.")
     conn = db()
     conn.execute("UPDATE admin SET password_hash = ? WHERE id = 1", (hash_password(password),))
-    conn.commit()
+    conn.execute("COMMIT")
     conn.close()
     return {"ok": True}
 
@@ -611,7 +653,7 @@ def close_sales(request: Request):
     admin_user(request)
     conn = db()
     conn.execute("UPDATE settings SET sales_open = 0 WHERE id = 1")
-    conn.commit()
+    conn.execute("COMMIT")
     conn.close()
     return {"ok": True}
 
