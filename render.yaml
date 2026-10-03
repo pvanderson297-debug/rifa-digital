@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: rifa-digital
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: RIFA_ADMIN_PASSWORD
+        generateValue: true
+      - key: RIFA_SECRET
+        generateValue: true
+    disk:
+      name: rifa-data
+      mountPath: /data
+      sizeGB: 1

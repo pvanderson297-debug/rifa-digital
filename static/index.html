@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Rifa Digital</title>
+<style>
+  :root { --bg:#f4f1ea; --ink:#1c1915; --muted:#6f675c; --line:#e4ddd0; --card:#fffdf8; --green:#0f6e56; --green-d:#0b5341; --gold-s:#f3e7cf; --shadow:0 10px 30px rgba(40,32,18,.08); }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:radial-gradient(900px 420px at 100% -10%,#efe4cc 0%,transparent 55%),radial-gradient(700px 380px at -10% 20%,#e7f3ee 0%,transparent 50%),var(--bg); color:var(--ink); }
+  button,input,textarea,select { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  .wrap { max-width:980px; margin:0 auto; padding:16px 14px 120px; }
+  .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+  .brand { display:flex; gap:10px; align-items:center; }
+  .mark { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; color:#fff; font-weight:800; background:linear-gradient(145deg,#147a60,#0b5341); }
+  h1 { font-size:18px; margin:0; }
+  .brand p,.note { color:var(--muted); margin:0; font-size:13px; line-height:1.4; }
+  .nav button,.btn,.ghost,.danger { border:0; border-radius:999px; padding:12px 16px; font-weight:700; min-height:46px; }
+  .nav button { background:transparent; color:var(--muted); }
+  .nav button.active { background:var(--ink); color:#fff; }
+  .btn { background:var(--green); color:#fff; }
+  .ghost { background:#fff; border:1px solid var(--line); }
+  .danger { background:#fff; color:#9c3418; border:1px solid #f0d2c8; }
+  .card,.hero { background:var(--card); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); }
+  .hero { padding:16px; display:grid; grid-template-columns:1.2fr .8fr; gap:14px; }
+  .photo { width:100%; height:190px; object-fit:cover; border-radius:14px; background:#efe8db; }
+  .kicker { display:inline-flex; background:var(--gold-s); color:#7a5b22; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+  h2 { font-size:30px; letter-spacing:-.04em; margin:8px 0; line-height:1.05; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat { background:#faf7f1; border-radius:14px; padding:12px; }
+  .stat b { display:block; font-size:18px; }
+  .bar { height:8px; background:#efe8db; border-radius:99px; overflow:hidden; margin-top:10px; }
+  .bar i { display:block; height:100%; background:linear-gradient(90deg,#147a60,#c4a15a); }
+  .numbers { display:grid; grid-template-columns:repeat(auto-fill,minmax(68px,1fr)); gap:8px; }
+  .num { min-height:58px; border-radius:12px; border:1px solid var(--line); background:#fff; font-weight:800; }
+  .num small { display:block; font-size:10px; font-weight:700; color:var(--muted); }
+  .num.reserved { background:#fff4e0; color:#8a5600; }
+  .num.paid { background:#e5f4ef; color:#0b5341; }
+  .num.picked { background:var(--ink); color:#fff; }
+  .num:disabled { cursor:default; }
+  .cart { position:sticky; bottom:10px; background:var(--ink); color:#fff; border-radius:18px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .cart button { background:#fff; color:var(--ink); border:0; border-radius:999px; padding:12px 16px; font-weight:800; }
+  label { display:block; font-size:12px; font-weight:800; color:var(--muted); margin:10px 0 4px; }
+  input,textarea,select { width:100%; border:1px solid var(--line); border-radius:12px; padding:12px; background:#fff; min-height:46px; }
+  textarea { min-height:90px; }
+  .row { display:grid; grid-template-columns:120px 1fr; gap:8px; }
+  .modal { position:fixed; inset:0; background:rgba(24,20,14,.48); display:none; align-items:end; justify-content:center; padding:12px; z-index:20; }
+  .modal.show { display:flex; }
+  .sheet { width:min(560px,100%); background:#fffdf8; border-radius:22px; padding:16px; max-height:92vh; overflow:auto; }
+  .toast { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:var(--ink); color:#fff; border-radius:999px; padding:10px 14px; display:none; z-index:30; }
+  .item { border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:8px; background:#fff; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .error { background:#fff1ee; color:#9c3418; border-radius:12px; padding:10px; }
+  .hidden { display:none !important; }
+  @media (max-width:800px) { .hero { grid-template-columns:1fr; } h2 { font-size:26px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand"><div class="mark">R</div><div><h1>Rifa Digital</h1><p>Preços em euros · dados no servidor</p></div></div>
+    <nav class="nav"><button id="tabBuy" class="active" type="button">Comprar</button><button id="tabAdmin" type="button">Organizador</button></nav>
+  </header>
+  <div id="status" class="card" style="padding:14px">A carregar a rifa…</div>
+  <section id="buyer" class="hidden"></section>
+  <section id="admin" class="hidden"></section>
+</div>
+<div id="modal" class="modal"></div>
+<div id="toast" class="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const picked = new Set();
+let raffle = null, numbers = [], view = "buyer", adminOk = false;
+function money(cents){ const v=(Number(cents)||0)/100; const [i,d]=v.toFixed(2).split("."); return i.replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+d+" €"; }
+function pad(n){ return String(n).padStart(3,"0"); }
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&","<":"<",">":">","\"":""","'":"&#39;"}[c])); }
+function toast(msg){ const el=$("toast"); el.textContent=msg; el.style.display="block"; clearTimeout(toast.t); toast.t=setTimeout(()=>el.style.display="none",2200); }
+function modal(html){ $("modal").innerHTML=`<div class="sheet">${html}</div>`; $("modal").classList.add("show"); $("modal").onclick=(e)=>{ if(e.target===$("modal")) closeModal(); }; }
+function closeModal(){ $("modal").classList.remove("show"); }
+async function api(url, opt={}){
+  const res = await fetch(url, { credentials:"same-origin", headers: opt.body && !(opt.body instanceof FormData) ? {"Content-Type":"application/json"} : undefined, ...opt, body: opt.body && !(opt.body instanceof FormData) ? JSON.stringify(opt.body) : opt.body });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.detail || "Não foi possível concluir.");
+  return data;
+}
+function when(v){ if(!v) return "A definir"; const d=new Date(v); return d.toLocaleString("pt-PT",{dateStyle:"short",timeStyle:"short"}); }
+async function load(){
+  $("status").classList.remove("hidden"); $("status").textContent="A carregar a rifa…";
+  try {
+    [raffle, numbers] = await Promise.all([api("/api/raffle"), api("/api/numbers")]);
+    try { await api("/api/admin/me"); adminOk=true; } catch { adminOk=false; }
+    $("status").classList.add("hidden");
+    render();
+  } catch(err) {
+    $("status").classList.remove("hidden");
+    $("status").innerHTML=`<div class="error">Não foi possível carregar a rifa. ${esc(err.message)}</div>`;
+  }
+}
+function render(){ $("tabBuy").classList.toggle("active", view==="buyer"); $("tabAdmin").classList.toggle("active", view==="admin"); $("buyer").classList.toggle("hidden", view!=="buyer"); $("admin").classList.toggle("hidden", view!=="admin"); if(view==="buyer") renderBuyer(); else renderAdmin(); }
+function renderBuyer(){
+  const paid=numbers.filter(n=>n.status==="paid").length, reserved=numbers.filter(n=>n.status==="reserved").length;
+  const pct=Math.round(paid/raffle.total*100);
+  const grid=numbers.map(n=>{
+    const cls=picked.has(n.number)?"picked":n.status;
+    const label=picked.has(n.number)?"escolhido":n.status==="paid"?"pago":n.status==="reserved"?"reservado":"livre";
+    return `<button class="num ${cls}" data-n="${n.number}" ${n.status!=="available"||!raffle.sales_open?"disabled":""}>${pad(n.number)}<small>${label}</small></button>`;
+  }).join("");
+  $("buyer").innerHTML=`
+    <div class="hero">
+      <div>
+        <span class="kicker">${raffle.drawn?"Sorteio realizado":raffle.sales_open?"Rifa aberta":"Vendas encerradas"}</span>
+        <h2>${esc(raffle.title)}</h2>
+        <p class="note">${esc(raffle.description)}</p>
+        ${raffle.photo_url?`<img class="photo" src="${raffle.photo_url}?t=${Date.now()}" alt="Foto do prêmio">`:""}
+        <div class="stats" style="margin-top:12px">
+          <div class="stat"><b>${money(raffle.price_cents)}</b><span>por número</span></div>
+          <div class="stat"><b>${paid}/${raffle.total}</b><span>pagos</span></div>
+          <div class="stat"><b>${reserved}</b><span>reservados</span></div>
+        </div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+      </div>
+      <div class="card" style="padding:14px">
+        <strong>Prêmio</strong><p class="note">${esc(raffle.prize)}</p>
+        <strong>Sorteio</strong><p class="note">${when(raffle.draw_at)}</p>
+        <strong>Organizador</strong><p class="note">${esc(raffle.organizer_name)} · +${esc(raffle.organizer_phone)}</p>
+        <strong>Regras</strong><p class="note" style="white-space:pre-wrap">${esc(raffle.rules)}</p>
+        ${raffle.winner?`<strong>Número vencedor</strong><p class="note">${pad(raffle.winner.number)}${raffle.winner.name?" · "+esc(raffle.winner.name):" · nome não publicado"}</p>`:""}
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:8px;margin:14px 0"><strong>Números</strong><span class="note">livre · reservado · pago</span></div>
+    <div class="numbers">${grid}</div>
+    <div class="cart ${picked.size?"":"hidden"}"><div><b>${picked.size}</b> número(s) · <b>${money(picked.size*raffle.price_cents)}</b></div><button id="goReserve" type="button">Ver resumo</button></div>`;
+  document.querySelectorAll(".num:not(:disabled)").forEach(b=>b.onclick=()=>{ const n=+b.dataset.n; picked.has(n)?picked.delete(n):picked.add(n); render(); });
+  const go=$("goReserve"); if(go) go.onclick=openReserve;
+}
+function openReserve(){
+  const list=[...picked].sort((a,b)=>a-b);
+  modal(`<h3 style="margin-top:0">Resumo da reserva</h3>
+    <p class="note">Números: <b>${list.map(pad).join(", ")}</b><br>Total: <b>${money(list.length*raffle.price_cents)}</b><br>Prazo para pagar: <b>${raffle.reserve_minutes} minutos</b> depois de confirmar.</p>
+    <label>Nome</label><input id="bName" placeholder="Nome completo">
+    <label>Celular com código do país</label><div class="row"><select id="cc"><option value="351">+351</option><option value="34">+34</option><option value="33">+33</option><option value="49">+49</option><option value="44">+44</option><option value="55">+55</option><option value="1">+1</option></select><input id="bPhone" placeholder="910000000"></div>
+    <label><input id="consent" type="checkbox" style="width:auto;min-height:auto"> Autorizo mostrar meu nome se eu ganhar</label>
+    <div class="actions"><button class="btn" id="doReserve" type="button">Confirmar reserva</button><button class="ghost" id="close1" type="button">Voltar</button></div>`);
+  $("close1").onclick=closeModal;
+  $("doReserve").onclick=async()=>{
+    const phone=$("cc").value+$("bPhone").value.replace(/\D/g,"");
+    try {
+      const data=await api("/api/reservations",{method:"POST",body:{name:$("bName").value,phone,numbers:list,consent_public:$("consent").checked}});
+      picked.clear(); closeModal(); await load(); showReserved(data);
+    } catch(err){ toast(err.message); await load(); }
+  };
+}
+function showReserved(data){
+  const link=location.origin+location.pathname;
+  const text=`Olá, sou ${data.name}. Reserva ${data.ref}. Números ${data.numbers.map(pad).join(", ")}. Total ${data.total_label}. Link: ${link}`;
+  modal(`<h3 style="margin-top:0">Reserva ${esc(data.ref)}</h3>
+    <p class="note">Pague <b>${esc(data.total_label)}</b> até ${when(data.expires_at)}. O comprovante não confirma o pagamento sozinho.</p>
+    <p style="white-space:pre-wrap">${esc(data.payment_instructions)}</p>
+    <div class="actions"><a class="btn" style="text-decoration:none" target="_blank" href="https://wa.me/${data.organizer_phone}?text=${encodeURIComponent(text)}">Abrir WhatsApp</a><button class="ghost" id="close2" type="button">Enviar comprovante</button></div>`);
+  $("close2").onclick=()=>openReceipt(data.ref);
+}
+function openReceipt(ref){
+  modal(`<h3 style="margin-top:0">Enviar comprovante</h3><p class="note">Referência ${esc(ref)}. O organizador precisa confirmar depois de verificar.</p>
+    <label>Celular usado na reserva</label><input id="rPhone" placeholder="351910000000">
+    <label>Arquivo</label><input id="rFile" type="file" accept="image/*,application/pdf">
+    <div class="actions"><button class="btn" id="sendReceipt" type="button">Enviar</button><button class="ghost" id="close3" type="button">Fechar</button></div>`);
+  $("close3").onclick=closeModal;
+  $("sendReceipt").onclick=async()=>{
+    const fd=new FormData(); fd.append("phone",$("rPhone").value); fd.append("file",$("rFile").files[0]);
+    try { const res=await fetch(`/api/reservations/${ref}/receipt`,{method:"POST",body:fd}); const data=await res.json(); if(!res.ok) throw new Error(data.detail); closeModal(); toast(data.message); } catch(err){ toast(err.message); }
+  };
+}
+async function renderAdmin(){
+  if(!adminOk){
+    $("admin").innerHTML=`<div class="card" style="padding:16px;max-width:460px"><h3>Painel do organizador</h3><p class="note">A senha é verificada no servidor. Esconder o botão não libera o painel.</p><label>Senha</label><input id="pass" type="password"><div class="actions"><button class="btn" id="login" type="button">Entrar</button></div></div>`;
+    $("login").onclick=async()=>{ try{ await api("/api/admin/login",{method:"POST",body:{password:$("pass").value}}); adminOk=true; render(); }catch(err){ toast(err.message);} };
+    return;
+  }
+  $("admin").innerHTML=`<div class="card" style="padding:16px">A carregar o painel…</div>`;
+  try {
+    const data=await api("/api/admin/overview");
+    const items=data.reservations.map(r=>`<div class="item"><b>${esc(r.name)}</b> · ${esc(r.ref)} · ${esc(r.status)}<div class="note">+${esc(r.phone)} · ${r.numbers.map(pad).join(", ")||"—"} · ${esc(r.total_label)} · até ${when(r.expires_at)}</div><div class="actions">${r.status==="pending"?`<button class="btn" data-ok="${r.ref}" type="button">Confirmar pagamento</button>`:""}${r.status==="pending"||r.status==="paid"?`<button class="danger" data-no="${r.ref}" type="button">Cancelar</button>`:""}${r.has_receipt?`<a class="ghost" style="text-decoration:none" href="/api/admin/reservations/${r.ref}/receipt" target="_blank">Ver comprovante</a>`:""}</div></div>`).join("")||`<p class="note">Nenhuma reserva.</p>`;
+    $("admin").innerHTML=`<div class="card" style="padding:16px"><h3 style="margin-top:0">Reservas</h3><p class="note">Livres ${data.counts.available} · reservados ${data.counts.reserved} · pagos ${data.counts.paid} · recebido ${esc(data.received_label)}</p><input id="q" placeholder="Buscar nome, celular ou referência"><div id="list">${items}</div><div class="actions"><a class="ghost" style="text-decoration:none" href="/api/admin/export.csv">Exportar CSV</a><button class="ghost" id="closeSales" type="button">Encerrar vendas</button><button class="btn" id="draw" type="button">Sortear</button><button class="ghost" id="logout" type="button">Sair</button></div></div>
+      <div class="card" style="padding:16px;margin-top:12px"><h3 style="margin-top:0">Editar rifa</h3>
+        <label>Título</label><input id="fTitle" value="${esc(data.title)}"><label>Prêmio</label><input id="fPrize" value="${esc(data.prize)}"><label>Descrição</label><textarea id="fDesc">${esc(data.description)}</textarea>
+        <div class="row"><div><label>Preço (€)</label><input id="fPrice" value="${(data.price_cents/100).toFixed(2)}"></div><div><label>Números</label><input id="fTotal" type="number" value="${data.total}"></div></div>
+        <label>Data e hora do sorteio</label><input id="fDraw" type="datetime-local" value="${(data.draw_at||"").slice(0,16)}"><label>Prazo da reserva (minutos)</label><input id="fMin" type="number" value="${data.reserve_minutes}">
+        <label>Regras</label><textarea id="fRules">${esc(data.rules)}</textarea><label>Nome do organizador</label><input id="fOrg" value="${esc(data.organizer_name)}"><label>WhatsApp com código do país</label><input id="fPhone" value="${esc(data.organizer_phone)}"><label>Instruções de pagamento</label><textarea id="fPay">${esc(data.payment_instructions)}</textarea>
+        <label>Foto do prêmio</label><input id="fPhoto" type="file" accept="image/*"><label>Nova senha do painel</label><input id="fPass" type="password" placeholder="mínimo 8 caracteres">
+        <div class="actions"><button class="btn" id="save" type="button">Salvar</button></div></div>`;
+    $("q").oninput=()=>{ const q=$("q").value.toLowerCase(); document.querySelectorAll("#list .item").forEach(el=>el.style.display=el.textContent.toLowerCase().includes(q)?"":"none"); };
+    document.querySelectorAll("[data-ok]").forEach(b=>b.onclick=async()=>{ await api(`/api/admin/reservations/${b.dataset.ok}/confirm`,{method:"POST"}); toast("Pagamento confirmado"); render(); });
+    document.querySelectorAll("[data-no]").forEach(b=>b.onclick=async()=>{ await api(`/api/admin/reservations/${b.dataset.no}/cancel`,{method:"POST"}); toast("Reserva cancelada"); render(); });
+    $("closeSales").onclick=async()=>{ await api("/api/admin/close-sales",{method:"POST"}); toast("Vendas encerradas"); load(); };
+    $("draw").onclick=async()=>{ if(!confirm("Encerrar de vez e sortear só os números pagos? Isto não pode ser desfeito.")) return; try{ const d=await api("/api/admin/draw",{method:"POST",body:{confirm:true}}); toast("Número sorteado: "+pad(d.number)); view="buyer"; await load(); }catch(err){ toast(err.message);} };
+    $("logout").onclick=async()=>{ await api("/api/admin/logout",{method:"POST"}); adminOk=false; render(); };
+    $("save").onclick=saveAdmin;
+  } catch(err){ adminOk=false; $("admin").innerHTML=`<div class="error">${esc(err.message)}</div>`; }
+}
+async function saveAdmin(){
+  const price=Math.round(Number($("fPrice").value.replace(",","."))*100);
+  try {
+    await api("/api/admin/raffle",{method:"PUT",body:{title:$("fTitle").value,prize:$("fPrize").value,description:$("fDesc").value,price_cents:price,total:Number($("fTotal").value),draw_at:$("fDraw").value?new Date($("fDraw").value).toISOString():null,reserve_minutes:Number($("fMin").value),rules:$("fRules").value,organizer_name:$("fOrg").value,organizer_phone:$("fPhone").value,payment_instructions:$("fPay").value,sales_open:true}});
+    if($("fPhoto").files[0]){ const fd=new FormData(); fd.append("file",$("fPhoto").files[0]); const res=await fetch("/api/admin/photo",{method:"POST",body:fd,credentials:"same-origin"}); if(!res.ok) throw new Error((await res.json()).detail); }
+    if($("fPass").value) await api("/api/admin/password",{method:"POST",body:{password:$("fPass").value}});
+    toast("Rifa salva"); await load();
+  } catch(err){ toast(err.message); }
+}
+$("tabBuy").onclick=()=>{ view="buyer"; render(); };
+$("tabAdmin").onclick=()=>{ view="admin"; render(); };
+load();
+</script>
+</body>
+</html>
